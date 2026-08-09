@@ -4,10 +4,46 @@
 # Imports
 
 from math import sin, tau
-from random import randint
+from random import randint, uniform
 from time import time
 
 import pygame as pg
+
+# ================================================================================================ #
+
+class ColorSource:
+	def __init__(self, bounding_rect: pg.FRect):
+		self.bounding_rect: pg.FRect = bounding_rect
+		self.position: pg.math.Vector2 = pg.math.Vector2(
+			uniform(0, self.bounding_rect.w),
+			uniform(0, self.bounding_rect.h)
+		)
+		self.velocity: pg.math.Vector2 = pg.math.Vector2(
+			uniform(-1.0, 1.0),
+			uniform(-1.0, 1.0)
+		).normalize()
+		self.velocity *= 100
+
+	def update(self, *args, **kwargs):
+		delta_time = kwargs.get('delta_time')
+		if delta_time is None: return
+
+		# Update position
+		self.position += self.velocity * delta_time
+
+		# Reflect off of bounding walls
+		if self.position.x < 0:
+			self.position.x *= -1
+			self.velocity.x *= -1
+		elif self.position.x > self.bounding_rect.w:
+			self.position.x = 2 * self.bounding_rect.w - self.position.x
+			self.velocity *= -1
+		if self.position.y < 0:
+			self.position.y *= -1
+			self.velocity.y *= -1
+		elif self.position.y > self.bounding_rect.h:
+			self.position.y = 2 * self.bounding_rect.h - self.position.y
+			self.velocity.y *= -1
 
 # ================================================================================================ #
 
@@ -76,11 +112,16 @@ class Lights:
 	def __init__(self):
 		pg.init()
 
+		self.clock = pg.Clock()
+		self.fps = 60
+		self.last_frame_time = time()
+		self.delta_time = 0
+
 		self.window_surf = pg.display.set_mode((1600, 900), pg.RESIZABLE)
 		self.window_rect = self.window_surf.get_frect()
 
 		self.light_group: LightGroup = LightGroup(self.window_rect)
-		print(len(self.light_group.lights))
+		self.color_source: ColorSource = ColorSource(self.window_rect)
 
 	# ================================================== #
 
@@ -112,13 +153,23 @@ class Lights:
 	# ================================================== #
 
 	def update(self):
+		self.clock.tick(self.fps)
+		self.update_delta_time()
+
 		self.light_group.update(target_rect = self.window_rect)
+		self.color_source.update(delta_time = self.delta_time)
+
+	def update_delta_time(self):
+		now = time()
+		self.delta_time = now - self.last_frame_time
+		self.last_frame_time = now
 
 	# ================================================== #
 
 	def display(self):
 		self.window_surf.fill((0, 0, 0))
 		self.light_group.display(target_surf = self.window_surf)
+		pg.draw.circle(self.window_surf, (255, 255, 255), self.color_source.position.xy, 10)
 		pg.display.flip()
 
 # ================================================================================================ #
