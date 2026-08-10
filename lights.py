@@ -11,9 +11,19 @@ import pygame as pg
 
 # ================================================================================================ #
 
+def distance(vector_1: tuple[float, ...], vector_2: tuple[float, ...]) -> float:
+	vector_length = len(vector_1)
+	cumulative_sum = 0
+	for i in range(vector_length):
+		cumulative_sum += (vector_1[i] - vector_2[i]) ** 2
+	return cumulative_sum ** (1 / vector_length)
+
+# ================================================================================================ #
+
 class ColorSource:
-	def __init__(self, bounding_rect: pg.FRect):
+	def __init__(self, bounding_rect: pg.FRect, color: tuple[int, int, int]):
 		self.bounding_rect: pg.FRect = bounding_rect
+		self.color: tuple[int, int, int] = color
 		self.position: pg.math.Vector2 = pg.math.Vector2(
 			uniform(0, self.bounding_rect.w),
 			uniform(0, self.bounding_rect.h)
@@ -45,6 +55,18 @@ class ColorSource:
 			self.position.y = 2 * self.bounding_rect.h - self.position.y
 			self.velocity.y *= -1
 
+class ColorSourceGroup:
+	def __init__(self, bounding_rect: pg.FRect):
+		self.color_sources: list[ColorSource] = [
+			ColorSource(bounding_rect, (255,   0,   0)),
+			ColorSource(bounding_rect, (  0, 255,   0)),
+			ColorSource(bounding_rect, (  0,   0, 255))
+		]
+
+	def update(self, *args, **kwargs):
+		for color_source in self.color_sources:
+			color_source.update(*args, **kwargs)
+
 # ================================================================================================ #
 
 class Light:
@@ -57,16 +79,32 @@ class Light:
 		self.offset: int = randint(0, 100)
 		self.color: tuple[int, int, int] = (255, 255, 255)
 
+	@property
+	def position(self) -> tuple[float, float]:
+		return self.x, self.y
+
 	def update(self, *args, **kwargs):
 		target_rect = kwargs.get('target_rect')
 		if target_rect is None: return
 
+		color_source_group = kwargs.get('color_source_group')
+		if color_source_group is None: return
+
+		r = color_source_group.color_sources[0].position.xy
+		g = color_source_group.color_sources[1].position.xy
+		b = color_source_group.color_sources[2].position.xy
+
+		max_distance = distance((0, 0), target_rect.size)
+
 		self.opacity = .5 * sin(self.period * time() + self.offset) + .5
+		
 		self.color = (
-			int((self.x / target_rect.w) * 255),	# r
-			int((self.y / target_rect.h) * 255),	# g
-			int(((target_rect.w - self.x) / target_rect.w + self.y / target_rect.h) * 255 / 2)	# b
+			int((distance(self.position, r) / max_distance) * 255),	# r
+			int((distance(self.position, g) / max_distance) * 255),	# g
+			int((distance(self.position, b) / max_distance) * 255)	# b
 		)
+
+		#print(self.position, r, g, b, self.color)
 
 	def display(self, *args, **kwargs):
 		target_surf = kwargs.get('target_surf')
@@ -121,7 +159,7 @@ class Lights:
 		self.window_rect = self.window_surf.get_frect()
 
 		self.light_group: LightGroup = LightGroup(self.window_rect)
-		self.color_source: ColorSource = ColorSource(self.window_rect)
+		self.color_source_group: ColorSourceGroup = ColorSourceGroup(self.window_rect)
 
 	# ================================================== #
 
@@ -156,8 +194,11 @@ class Lights:
 		self.clock.tick(self.fps)
 		self.update_delta_time()
 
-		self.light_group.update(target_rect = self.window_rect)
-		self.color_source.update(delta_time = self.delta_time)
+		self.color_source_group.update(delta_time = self.delta_time)
+		self.light_group.update(
+			target_rect = self.window_rect,
+			color_source_group = self.color_source_group
+		)
 
 	def update_delta_time(self):
 		now = time()
@@ -169,7 +210,8 @@ class Lights:
 	def display(self):
 		self.window_surf.fill((0, 0, 0))
 		self.light_group.display(target_surf = self.window_surf)
-		pg.draw.circle(self.window_surf, (255, 255, 255), self.color_source.position.xy, 10)
+		#for color_source in self.color_source_group.color_sources:
+		#	pg.draw.circle(self.window_surf, color_source.color, color_source.position.xy, 10)
 		pg.display.flip()
 
 # ================================================================================================ #
